@@ -1,0 +1,8 @@
+bs4
+Sastrawi
+NLTK
+numpy
+scipy
+scikit-learn
+pandas
+requests
