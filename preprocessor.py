@@ -2,7 +2,6 @@ from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 from nltk.corpus import stopwords
 from nltk import sent_tokenize, word_tokenize
 import numpy as np
-import nltk
 import re
 import string
 
@@ -13,19 +12,20 @@ import string
 
 class PreProcess:
     def start_words(self, msg):
-        normalized_sentences = self.normalize(msg)
-        tokenize_words = self.word_tokenization(normalized_sentences)
-        text = ' '.join(tokenize_words)
+        if msg:
+            normalized_sentences = self.normalize(msg)
+            tokenize_words = self.word_tokenization(normalized_sentences)
+            text = ' '.join(tokenize_words)
 
-        return text, msg
+            return text, msg
 
     def start_sentence(self, msg):
+        if msg:
+            sentences = self.sent_tokenization(msg)
+            normalize_corpus = np.vectorize(self.normalize)
+            normalized_sentences = normalize_corpus(sentences)
 
-        sentences = self.sent_tokenization(msg)
-        normalize_corpus = np.vectorize(self.normalize)
-        normalized_sentences = normalize_corpus(sentences)
-
-        return normalized_sentences, sentences
+            return normalized_sentences, sentences
     
     def normalize(self, msg):
         

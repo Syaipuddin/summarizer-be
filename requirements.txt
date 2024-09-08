@@ -6,3 +6,6 @@ scipy
 scikit-learn
 pandas
 requests
+Flask
+flask-cors
+waitress

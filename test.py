@@ -52,10 +52,8 @@ for i, paragraph in enumerate(combined_paragraphs, 1):
 
     summed_all.append(summed_text)
 
-text = ""
-for t in summed_all:
-    t = t.replace('\n', ' ')
-    text += t
+text = ' '.join(summed_all)
+text = text.replace('\n', ' ')
 
 norm_text, text = normalize_corpus(text)
 summed_text = summ.summarize(norm_text, text)
