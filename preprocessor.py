@@ -1,7 +1,6 @@
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 from nltk.corpus import stopwords
 from nltk import sent_tokenize, word_tokenize
-import numpy as np
 import re
 import string
 
@@ -11,30 +10,43 @@ import string
 
 
 class PreProcess:
-    def start_words(self, msg):
-        if msg:
-            normalized_sentences = self.normalize(msg)
-            tokenize_words = self.word_tokenization(normalized_sentences)
-            text = ' '.join(tokenize_words)
-
-            return text, msg
 
     def start_sentence(self, msg):
         if msg:
-            sentences = self.sent_tokenization(msg)
-            normalize_corpus = np.vectorize(self.normalize)
-            normalized_sentences = normalize_corpus(sentences)
 
-            return normalized_sentences, sentences
+            norm_sentences = []
+            sentences = self.sent_tokenization(msg)
+            for i in sentences:
+                norm_sentences.append(self.normalize(i))
+
+            filtered_sentences = [sentence for sentence in norm_sentences if sentence != '']
+            return filtered_sentences, sentences
+
+    def start_sentence_for_training(self, msg):
+        if msg:
+            norm_sentences = []
+            sentences = self.sent_tokenization(msg)
+            for i in sentences:
+                norm_sentences.append(self.normalize(i))
+
+            filtered_sentences = [sentence for sentence in norm_sentences if sentence != '']
+            return ' '.join(filtered_sentences)
     
     def normalize(self, msg):
-        
-        cf = self.case_fold(msg)
-        nn = self.no_noise(cf)
-        ns = self.no_stopwords(nn)
-        text = ''.join(ns)
 
-        return text
+        normalized_words = []
+
+        # tokenize to words first
+        words = self.word_tokenization(msg)
+        for i in words:
+            if i != '' or not i.isspace():
+                cf = self.case_fold(i)
+                nn = self.no_noise(cf)
+                ns = self.no_stopwords(nn)
+                if ns:
+                    normalized_words.append(ns)
+
+        return ' '.join(normalized_words)
     
     # CASE FOLDING
     def case_fold(self, msg):
@@ -46,14 +58,10 @@ class PreProcess:
         return no_ws
 
     # STOP WORDS REMOVAL
-    def no_stopwords(self, msg_list):
+    def no_stopwords(self, words):
         stopwords_list = set(stopwords.words('indonesian'))
-        cleaned = []
-        for words in msg_list:
-            if words not in stopwords_list:
-                cleaned.append(words)
-
-        return cleaned
+        if words not in stopwords_list:
+            return words
 
         # STEMMING
 

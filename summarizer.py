@@ -1,79 +1,125 @@
-from math import floor, ceil
+import re
+from datetime import datetime
+from math import ceil
 
 import numpy as np
+import os
+import joblib
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import FunctionTransformer
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import TruncatedSVD
 from sklearn.neighbors import NearestNeighbors
-import pandas as pd
-from scipy.sparse.linalg import svds
+from sumy.parsers.plaintext import PlaintextParser
+from sumy.summarizers.lsa import LsaSummarizer
+from preprocessor import PreProcess
+from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFactory
+factory = StopWordRemoverFactory()
+stopwords = factory.get_stop_words()
 
+from indonesian_tokenizer import IndonesianTokenizer
+
+os.environ['PYTHONIOENCODING'] = 'utf-8'
+
+pp = PreProcess()
+
+
+def preprocess_docs_for_pipeline(docs_array):
+    normalized_docs = []
+    for doc in docs_array:
+        normalized_docs.append(pp.start_sentence_for_training(doc))
+
+    print("Finished Preprocessing")
+    return [i for i in normalized_docs if i != '']
 
 class Summarizer:
 
-    def vectorize(self, paragraphs):
-        tv = TfidfVectorizer()
-        x = tv.fit_transform(paragraphs)
+    pipeline = False
+    lsa_models = False
+    preprocess = False
 
-        return x
+    def __init__(self):
 
-    def find_neares_neighbors(self, vector):
-        # init knn model
+        self.pipeline = Pipeline([
+            ('preprocess', FunctionTransformer(func=preprocess_docs_for_pipeline, validate=False)),
+            ('tfidf', TfidfVectorizer(stop_words=stopwords)),
+            ('svd', TruncatedSVD(n_components=50))
+        ])
+        self.load_models()
 
-        k = 1  # Choose the number of neighbors
-        knn = NearestNeighbors(n_neighbors=k, metric='cosine').fit(vector)
-        knn.fit(vector)
+    def load_models(self):
+        path = "models"
+        first_dir = self.find_models(path)
+        if os.path.isfile(f"{path}/{first_dir}.joblib"):
+            self.lsa_models = joblib.load(f"{path}/{first_dir}.joblib")
 
-        # find nearest neaghbor for each paragraph
-        distances, indices = knn.kneighbors(vector)
+    def find_neighbours(self, sentences, query_setences):
 
-        return distances, indices
+        X_reduced = self.lsa_models.transform(sentences + [query_setences])
 
-    def summarize_knn(self, paragraphs):
+        X_reduced_articles = X_reduced[:-1]
+        X_reduced_query = X_reduced[-1]
 
-        vector = self.vectorize(paragraphs)
-        distances, indices = self.find_neares_neighbors(vector)
+        knn = NearestNeighbors(n_neighbors=3, metric='cosine')
+        knn.fit(X_reduced_articles)
 
-        combined_paragraphs = []
-        visited = set()
+        distances, indices = knn.kneighbors([X_reduced_query])
 
-        for i, neighbors in enumerate(indices):
-            if i not in visited:
-                group = [paragraphs[j] for j in neighbors if j not in visited]
-                combined_paragraph = " ".join(group)
-                combined_paragraphs.append(combined_paragraph)
-                visited.update(neighbors)
+        most_relevant_sentences = []
 
-        # Filter out duplicates using the distances array
-        unique_paragraphs = []
-        for paragraph in combined_paragraphs:
-            if paragraph not in unique_paragraphs:
-                unique_paragraphs.append(paragraph)
+        for i in indices[0]:
+            most_relevant_sentences.append(sentences[i])
 
-        return unique_paragraphs
+        return most_relevant_sentences
 
-    def getMatrix(self, sentences):
-        tv = TfidfVectorizer(min_df=0., max_df=1., use_idf=True)
-        dt_matrix = tv.fit_transform(sentences)
-        dt_matrix = dt_matrix.toarray()
-        # vocab = dt_matrix.get_feature_names_out()
-        td_matrix = dt_matrix.T
+    def summarize_sumy(self, input_text):
+        # Parse the input text
+        parser = PlaintextParser.from_string(input_text, IndonesianTokenizer())
 
-        return td_matrix
+        # Create an LSA summarizer
+        summarizer = LsaSummarizer()
 
-    def summarize(self, sentences, normalized_sentences, singular_count=1):
-        total_sentences = floor((len(sentences) * 0.3))
-        print(total_sentences)
+        # Generate the summary
+        summary = summarizer(parser.document,sentences_count=3)  # You can adjust the number of sentences in the summary
 
-        matrix = self.getMatrix(normalized_sentences)
-        u, s, vt = svds(matrix, k=ceil(total_sentences * 0.6))
+        summed_articles = []
+        for sentence in summary:
+            summed_articles.append(str(sentence))
 
-        term_topic_mat, singular_values, topic_document_mat =u, s, vt
-        sv_threshold = 0.50
-        min_sigma_value = max(singular_values * sv_threshold)
-        singular_values[singular_values < min_sigma_value] = 0
+        return summed_articles
 
-        salience_scores = np.sqrt(np.dot(np.square(singular_values), np.square(topic_document_mat)))
-        top_sentences_indices = (-salience_scores).argsort()[:total_sentences]
-        top_sentences_indices.sort()
-        # print(top_sentences_indices)
+    def summarize(self, input_text):
 
-        return '\n' .join(np.array(sentences)[top_sentences_indices])
+        norm_sentences, sentences = pp.start_sentence(input_text)
+
+        if self.lsa_models and norm_sentences:
+            print(norm_sentences)
+            X_reduced = self.lsa_models.transform(norm_sentences)
+            sentence_scores = np.linalg.norm(X_reduced, axis=1)
+            ranking = sentence_scores.argsort()[::-1]
+
+            # Choose the top N sentences
+            N = 3  # Number of sentences for summary
+            top_sentences = [sentences[i] for i in ranking[:N]]
+
+            return top_sentences
+
+        else:
+            raise Exception("Models not trained, please train model first")
+
+    def find_models(self, directory):
+        try:
+            # List all entries in the directory
+            entries = os.listdir(directory)
+            # Filter out files, keeping only directories
+            subfolders = [entry for entry in entries if os.path.isdir(os.path.join(directory, entry))]
+            # Sort subfolders alphabetically
+            subfolders.sort(reverse=True)
+            # Return the first subfolder if available
+            if subfolders:
+                return subfolders[0]
+            else:
+                return None
+        except FileNotFoundError:
+            print(f"The directory {directory} does not exist.")
+            return None

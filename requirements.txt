@@ -9,3 +9,10 @@ requests
 Flask
 flask-cors
 waitress
+sumy
+nlp-id
+latent-semantic-analysis
+joblib
+rouge
+matplotlib
+mpld3

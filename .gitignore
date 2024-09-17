@@ -1,3 +1,9 @@
 .idea/
 __pycache__/
 venv/
+config.yaml
+fig.json
+indonesian_tokenizer.py
+data.csv
+train.01.json
+training_rouge.png
