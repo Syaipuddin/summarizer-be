@@ -3,7 +3,6 @@ __pycache__/
 venv/
 config.yaml
 fig.json
-indonesian_tokenizer.py
 data.csv
 train.01.jsonl
 training_rouge.png
