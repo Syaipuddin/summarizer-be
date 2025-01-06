@@ -42,16 +42,19 @@ class Summarizer:
 
         self.pipeline = Pipeline([
             ('preprocess', FunctionTransformer(func=preprocess_docs_for_pipeline, validate=False)),
-            ('tfidf', TfidfVectorizer(stop_words=stopwords)),
-            ('svd', TruncatedSVD(n_components=50))
+            ('tfidf', TfidfVectorizer(stop_words=stopwords, ngram_range=(1, 2), max_features=5000)),
+            ('svd', TruncatedSVD(n_components=50, n_iter=25))
         ])
-        self.load_models()
+        # self.load_models()
 
     def load_models(self):
         path = "models"
-        first_dir = self.find_models(path)
-        if os.path.isfile(f"{path}/{first_dir}.joblib"):
-            self.lsa_models = joblib.load(f"{path}/{first_dir}.joblib")
+        model_file = self.find_models(path)
+        if model_file is not None and os.path.isfile(os.path.join(path, model_file)):
+            self.lsa_models = joblib.load(os.path.join(path, model_file))
+            print(f"Model '{model_file}' loaded successfully.")
+        else:
+            raise Exception("no job found, please train model first")
 
     def find_neighbours(self, sentences, query_setences):
 
@@ -112,14 +115,36 @@ class Summarizer:
             # List all entries in the directory
             entries = os.listdir(directory)
             # Filter out files, keeping only directories
-            subfolders = [entry for entry in entries if os.path.isdir(os.path.join(directory, entry))]
+            joblib_files = [entry for entry in entries if entry.endswith('.joblib')]
             # Sort subfolders alphabetically
-            subfolders.sort(reverse=True)
+            joblib_files.sort(reverse=True)
             # Return the first subfolder if available
-            if subfolders:
-                return subfolders[0]
+            if joblib_files:
+                return joblib_files[0]
             else:
                 return None
         except FileNotFoundError:
             print(f"The directory {directory} does not exist.")
             return None
+
+    def filter_low_feature_docs(self, docs, min_features=50):
+        filtered_docs = []
+        for doc in docs:
+            processed_doc = pp.start_sentence_for_training(doc)
+            vectorizer = TfidfVectorizer(stop_words=stopwords)
+            tfidf_vector = vectorizer.fit_transform([processed_doc])
+
+            if len(vectorizer.get_feature_names_out()) >= min_features:
+                filtered_docs.append(doc)
+
+            print(len(vectorizer.get_feature_names_out()))
+
+        return filtered_docs
+
+    def preprocess_docs_for_pipeline(self, docs_array):
+        normalized_docs = []
+        for doc in docs_array:
+            normalized_docs.append(pp.start_sentence_for_training(doc))
+
+        print("Finished Preprocessing")
+        return [i for i in normalized_docs if i != '']

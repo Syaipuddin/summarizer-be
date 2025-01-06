@@ -61,6 +61,9 @@ def summarize_article():
     data = request.get_json()
     body = data['body']
     title = data['title'] if data['title'] else ''
+    # load the model
+    if not summ.lsa_models:
+        summ.load_models()
 
     try:
 
@@ -88,6 +91,9 @@ def summarize_article():
 @app.route("/train-model", methods=['POST'])
 def train_model():
     f = request.files['file']
+    # load the model
+    if not summ.lsa_models:
+        summ.load_models()
 
     from werkzeug.utils import secure_filename
     filename = secure_filename(f.filename)
@@ -143,43 +149,77 @@ def train_model():
 @app.route("/test-model", methods=['POST'])
 def test_model():
     f = request.files['file']
+    # load the model
+    if not summ.lsa_models:
+        summ.load_models()
+    epoch = 10
 
     from werkzeug.utils import secure_filename
     filename = secure_filename(f.filename)
     f.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
-    num_of_docs = 10
-    data = pd.read_json(f'data/{filename}', lines=True)
-    data = data.dropna(axis=1)
-    data = data.head(num_of_docs)
-
-    all_articles = []
-
-    print("Fetching articles")
-    for i, row in data.iterrows():
-        print(row['source_url'])
-        article = nf.get_one_news(row['source_url'])
-        if article:
-            all_articles.append(article)
-
+    all_summarized_article = []
+    all_scores = []
     print("Summarizing Article")
-    summarized_articles = []
-    for i in all_articles:
-        summed = summ.summarize(i)
-        summarized_articles.append({
-            "doc": i,
-            "summed": ' '.join(summed)
-        })
+    for e in range(epoch):
 
-    hyps, refs = map(list, zip(*[[d['doc'], d['summed']] for d in summarized_articles]))
-    rouge = Rouge()
-    scores = rouge.get_scores(hyps, refs, avg=True)
+        offset = 10 * (e + 1)
+        data = pd.read_json(f'data/{filename}', lines=True)
+        data = data.dropna(axis=1)
+        data = data.iloc[offset if e == 1 else 0 : offset+10]
+        # data = data.head(10)
 
-    get_fig = plot_scores(scores, "training_rouge.png")
+        all_articles = []
+
+        print("Fetching articles")
+        for i, row in data.iterrows():
+            print(row['source_url'])
+            article = nf.get_one_news(row['source_url'])
+            if article:
+                all_articles.append(article)
+
+        filtered_article = summ.filter_low_feature_docs(all_articles)
+
+        if not filtered_article:
+            continue
+        summ.lsa_models.fit(filtered_article) # retrain models each epoch (since TruncatedSVD only updated in each train)
+
+        summarized_articles = []
+        for j in filtered_article:
+            summed = summ.summarize(j)
+            summarized_articles.append({
+                "doc": j,
+                "summed": ' '.join(summed)
+            })
+
+            all_summarized_article.append({
+                "doc": j,
+                "summed": ' '.join(summed)
+            })
+
+        hyps, refs = map(list, zip(*[[d['doc'], d['summed']] for d in summarized_articles]))
+        rouge = Rouge() # Note: "f" stands for f1_score, "p" stands for precision, "r" stands for recall.
+        scores = rouge.get_scores(hyps, refs, avg=True)
+
+        all_scores.append([scores, e+1])
+
+    sorted_scores = sorted(
+        all_scores,
+        key=lambda x: (x[0]['rouge-1']['f'], x[0]['rouge-1']['p'], x[0]['rouge-1']['r']),
+        reverse=True
+    )
+
+    print(all_scores)
+
+    highest_score = sorted_scores[0][0]
+    highest_score_summarized = all_summarized_article[sorted_scores[0][1]]
+
+    get_fig = plot_scores(highest_score, "training_rouge.png")
 
     response = {
-        "data" : summarized_articles,
-        "scores" : scores,
+        "data" : all_summarized_article,
+        "scores" : highest_score,
+        "epoch" : sorted_scores[0][1], # get epoch of the highest score
         "fig": png_to_base64(get_fig)
     }
     return response
