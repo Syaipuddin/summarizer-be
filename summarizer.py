@@ -102,6 +102,25 @@ class Summarizer:
             ranking = sentence_scores.argsort()[::-1]
 
             # Choose the top N sentences
+            N = 4  # Number of sentences for summary
+            top_sentences = [sentences[i] for i in ranking[:N]]
+
+            return top_sentences
+
+        else:
+            raise Exception("Models not trained, please train model first")
+
+    def summarize_adjust(self, input_text):
+
+        norm_sentences, sentences = pp.start_sentence(input_text)
+
+        if self.lsa_models and norm_sentences:
+            print(norm_sentences)
+            X_reduced = self.lsa_models.transform(norm_sentences)
+            sentence_scores = np.linalg.norm(X_reduced, axis=1)
+            ranking = sentence_scores.argsort()[::-1]
+
+            # Choose the top N sentences
             N = 3  # Number of sentences for summary
             top_sentences = [sentences[i] for i in ranking[:N]]
 

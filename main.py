@@ -15,6 +15,10 @@ import pandas as pd
 import re
 import os
 
+import nltk
+nltk.download('punkt_tab')
+nltk.download('stopwords')
+
 pp = PreProcess()
 summ = Summarizer()
 nf = NewsFetcher()
@@ -128,12 +132,15 @@ def train_model():
     summarized_articles = []
     for i in all_articles:
         summed = summ.summarize(i)
+        summed_adjusted = summ.summarize_adjust(i)
+
         summarized_articles.append({
             "doc": i,
+            "adjuster": ' '.join(summed_adjusted),
             "summed": ' '.join(summed)
         })
 
-    hyps, refs = map(list, zip(*[[d['doc'], d['summed']] for d in summarized_articles]))
+    hyps, refs = map(list, zip(*[[d['adjuster'], d['summed']] for d in summarized_articles]))
     rouge = Rouge()
     scores = rouge.get_scores(hyps, refs, avg=True)
 
@@ -152,7 +159,7 @@ def test_model():
     # load the model
     if not summ.lsa_models:
         summ.load_models()
-    epoch = 10
+    epoch = 4
 
     from werkzeug.utils import secure_filename
     filename = secure_filename(f.filename)
@@ -187,8 +194,11 @@ def test_model():
         summarized_articles = []
         for j in filtered_article:
             summed = summ.summarize(j)
+            summed_adjusted = summ.summarize_adjust(j)
+
             summarized_articles.append({
                 "doc": j,
+                "adjuster": ' '.join(summed_adjusted),
                 "summed": ' '.join(summed)
             })
 
@@ -197,7 +207,7 @@ def test_model():
                 "summed": ' '.join(summed)
             })
 
-        hyps, refs = map(list, zip(*[[d['doc'], d['summed']] for d in summarized_articles]))
+        hyps, refs = map(list, zip(*[[d['adjuster'], d['summed']] for d in summarized_articles]))
         rouge = Rouge() # Note: "f" stands for f1_score, "p" stands for precision, "r" stands for recall.
         scores = rouge.get_scores(hyps, refs, avg=True)
 
